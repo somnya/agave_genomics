@@ -5,14 +5,14 @@
 ### Eddy J. Mendoza-Galindo
 ### ENES León 
 
-Advisor:
-Dra. Tania Hernández-Hernández
-Desert Botanical Garden, USA.
+## Advisor:
+- Dra. Tania Hernández-Hernández
+  - Desert Botanical Garden, USA.
 
-Co-Advisors:
-Dra.  L. Selene Fernández-Valverde
-Dr. Sergio Nigenda-Morales 
-LANGEBIO CINVESTAV Irapuato.
+## Co-Advisors:
+- Dra.  L. Selene Fernández-Valverde
+- Dr. Sergio Nigenda-Morales 
+  - LANGEBIO CINVESTAV Irapuato.
 
-Internal advisor:
-Dr. Antonio Hernández-López
+## Internal advisor:
+- Dr. Antonio Hernández-López
