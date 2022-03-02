@@ -126,9 +126,11 @@ grep ">" raw/consensus_rep_families.fa | sed -E "s/.+#(.+)\s\(\s.+/\1/g" | sort 
      17 Simple_repeat
    1155 Unknown
       1 buffer
-# FAMILY SIZE SEEMS NOT TO MATCH NUMBER OF REPEATS IN THE GENOME
+# FAMILY SIZE DO NOT TO MATCH NUMBER OF REPEATS IN THE GENOME
 
-cut -f 1-9 jcetz/AGAVEv3_TOT_snap1.all.gff | grep "repeat" |awk -F'\t' '$3 ~ /match/ {print $0}' | sed -E 's/ID=(\w+):\hit\:(\w+):.+\genus:(\w+).+/ID=\1R\2;Name=RM_\3:\2/g' | sed -E 's/ /\t/g' > repeats.gff
+# LTR FAMILES
+cut -f 1-9 jcetz/AGAVEv3_TOT_snap1.all.gff | grep "repeatmasker" | grep -v "match_part" | grep "rnd" | grep "LTR%" |
+sed -E 's/ID=(\w+):.+\:(\w+):.+\genus:(\w+).+F(\w+);.+/ID=\1TE\2;Name=\3\/\4:\2/g' > ltrf.gff
 
 # All together
 cat genes.gff cds.gff exons.gff mrnas.gff trnas.gff utrs.gff repeats.gff > all.gff
