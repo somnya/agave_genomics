@@ -1,0 +1,525 @@
+---
+title: "Evolutionary and population genomics of Agave angustifolia"
+author: "Eddy Jesús Mendoza Galindo"
+date: "02/10/2021"
+output:
+    prettydoc::html_pretty:
+    theme: cayman
+
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+# PART 1: EVOLUTIONARY GENOMICS
+## Bachelor thesis. Agrigenomic Sciences. 
+### National Autonomous University of Mexico
+
+Advisor:
+- Dra. Tania Hernández-Hernández
+  - Desert Botanical Garden, USA.
+
+## Co-Advisors:
+- Dra.  L. Selene Fernández-Valverde
+- Dr. Sergio Nigenda-Morales 
+  - LANGEBIO CINVESTAV Irapuato.
+
+## Internal advisor:
+- Dr. Antonio Hernández-López
+
+```{r setup, include=FALSE}
+# NEEDED PACKAGES
+library(ggtree)
+library(ggpointdensity)
+library(tidyverse)
+library(tximport)
+library(dplyr)
+library(DESeq2)
+library(pheatmap)
+library(MetBrewer)
+library(ggplot2)
+library(pheatmap)
+getwd()
+getRversion()
+```
+# GFF CLEANING
+
+Dr. José Cetz annotated the genome. Raw gff files were provided by him. I implemented an arabidopsis-like nomenclature to rename each genomic element and its attributes.
+
+```{bash bash:gff_cleaning, eval=FALSE, include=FALSE}
+
+# HOW MANY ELEMENTS ARE?
+cat jcetz/AGAVEv3_TOT_snap1.all.gff | grep "gene" | cut -f 3 | sort | uniq -c
+ 188401 CDS
+ 212964 exon
+  28075 five_prime_UTR
+  39081 gene #1428 trnas
+  37653 mRNA
+1061883 match
+3501020 match_part
+  31168 three_prime_UTR
+
+# mRNA RENAMING: Scaffold+G+ID
+cat jcetz/AGAVEv3_TOT_snap1.all.gff | awk -F'\t' '$3 ~ /mRNA/ {print $0}' | sed -E 's/ID=\w+\-(\w+).+\gene-(\w+.\w+).+/ID=\1G\2;Parent=\1G\2;Name=\1G\2/g' > mrnas.gff
+
+# CDS RENAMING: Scaffold+G+ID:CDS:X	
+cat jcetz/AGAVEv3_TOT_snap1.all.gff | awk -F'\t' '$3 ~ /CDS/ {print $0}' | awk '{print $0 (// ? "_" (++c[$9]) : "")}' | sed -E 's/ID=\w+\-(\w+).+\gene-(\w+.\w+).+\_(\w+)/ID=\1G\2:CDS:\3;Parent=\1G\2;Name=\1G\2:CDS:\3/g' > cds.gff
+
+# EXON RENAMING Scaffold+G+ID:exon:ExonID
+grep "exon" jcetz/AGAVEv3_TOT_snap1.all.gff | sed -E 's/ID=\w+\-(\w+).+\gene-(\w+.\w+).+(\exon:\w+);.+/ID=\1G\2:\3;Parent=\1G\2;Name=\1G\2:\3/g' > exons.gff
+
+# UTRS: Scaffold+G+ID:n_prime_UTR:X
+grep "five_prime_UTR" jcetz/AGAVEv3_TOT_snap1.all.gff |awk '{print $0 (// ? "_" (++c[$9]) : "")}'| sed -E 's/ID=\w+\-(\w+).+\gene-(\w+.\w+).+\_(\w+)/ID=\1G\2:five_prime_UTR:\3;Parent=\1G\2;Name=\1G\2:five_prime_UTR:\3/g' > utrs.gff
+grep "three_prime_UTR" jcetz/AGAVEv3_TOT_snap1.all.gff |awk '{print $0 (// ? "_" (++c[$9]) : "")}'| sed -E 's/ID=\w+\-(\w+).+\gene-(\w+.\w+).+\_(\w+)/ID=\1G\2:three_prime_UTR:\3;Parent=\1G\2;Name=\1G\2:tree_prime_UTR:\3/g' >> utrs.gff
+
+# GENES: Scaffold+G+ID
+grep "gene" jcetz/AGAVEv3_TOT_snap1.all.gff | awk -F'\t' '$3 ~ /gene/ {print $0}' | sed -E 's/ID=\w+\-(\w+).+\gene-(\w+.\w+).+/ID=\1G\2;Name=\1G\2/g' | grep -v "tRNA" > genes.gff
+grep "tRNA" jcetz/AGAVEv3_TOT_snap1.all.gff | awk -F'\t' '$3 ~ /gene/ {print $0}' | awk '{$2="tRNA"; print $0}' | sed -E 's/ /\t/g' > trnas.gff # tRNAs
+
+# REPEATOME
+cat jcetz/AGAVEv3_TOT_snap1.all.gff | grep "repeatmasker" | cut -f 3 | sort | uniq -c
+3678098 match
+3678098 match_part
+
+# REPEATOME RENAMING: Scaffold+R+ID
+# THERE SEEMS TO BE TWO TYPES OF ANOTATION, SO, I DID IT DIFFERENT FOR EACH ONE AND EACH TYPE OF REPEAT
+grep ">" raw/consensus_rep_families.fa | sed -E "s/.+#(.+)\s\(\s.+/\1/g" | sort | uniq -c
+     15 DNA
+     18 DNA/CMC-EnSpm
+      1 DNA/CMC-Transib
+      1 DNA/Ginger
+      1 DNA/IS3EU
+      1 DNA/Kolobok-Hydra
+     10 DNA/MULE-MuDR
+      1 DNA/Maverick
+      1 DNA/Merlin
+      6 DNA/MuLE-MuDR
+      1 DNA/Novosib
+      4 DNA/PIF-Harbinger
+      1 DNA/TcMar
+      1 DNA/TcMar-Fot1
+      1 DNA/TcMar-Tc2
+     25 DNA/hAT-Ac
+      1 DNA/hAT-Charlie
+     23 DNA/hAT-Tag1
+      4 DNA/hAT-Tip100
+      2 LINE/Jockey
+      9 LINE/L1
+      7 LINE/L2
+      1 LINE/Penelope
+      1 LINE/R1
+      8 LINE/RTE-BovB
+     10 LTR
+      2 LTR/Cassandra
+      7 LTR/Caulimovirus
+    207 LTR/Copia
+      1 LTR/ERV1
+    178 LTR/Gypsy
+      1 LTR/Ngaro
+      5 LTR/Pao
+      2 RC/Helitron
+      2 SINE/tRNA
+      1 SINE?
+      8 Satellite
+     17 Simple_repeat
+   1155 Unknown
+      1 buffer
+# FAMILY SIZE SEEMS NOT TO MATCH NUMBER OF REPEATS IN THE GENOME
+
+cut -f 1-9 jcetz/AGAVEv3_TOT_snap1.all.gff | grep "repeat" |awk -F'\t' '$3 ~ /match/ {print $0}' | sed -E 's/ID=(\w+):\hit\:(\w+):.+\genus:(\w+).+/ID=\1R\2;Name=RM_\3:\2/g' | sed -E 's/ /\t/g' > repeats.gff
+
+# All together
+cat genes.gff cds.gff exons.gff mrnas.gff trnas.gff utrs.gff repeats.gff > all.gff
+sort -k 1 all.gff > annotation.gff
+
+```
+
+
+
+```{bash}
+cut -f 1,4 genome_length.tab > sca_lengths.tab
+```
+
+
+```{r}
+
+# lENGHT HISTOGRAM 
+
+sca_lenght = read.table("../sca_lengths.tab")
+#sca_hist <- ifelse(sca_lenght$V2 > 4000000, "grey", "green")[-length(sca_lenght$V2)]
+#ggplot(sca_lenght, aes(V2)) + geom_histogram(binwidth = 10000) + theme_bw()
+
+sca_hist <- data.frame( x=sca_lenght$V2, fourmb=sca_lenght$V2>4000000)
+
+qplot(x, data=sca_hist,fill=fourmb, binwidth=10000) +
+theme_gray() +
+scale_fill_manual(values=c("#5EBF75", "#6276F6")) + geom_vline(xintercept = 4000000, color="black", linetype="dashed", size=1) + xlab("Length") + ylab("Scaffold count")  +
+  labs(fill="Scaffolds above 4mb")+
+  theme(legend.position = c(0.8, 0.8)) +
+    theme(text = element_text(size=30)) 
+ggsave(file="sca1.png", width=12, height=8, dpi=300)
+```
+
+```{r}
+# Accumulated size (16th longest scaffolds)
+
+tot = sum(sca_lenght$V2)
+prop_sca = sca_lenght$V2 / tot * 100
+df_prop = data.frame(sca_lenght$V1, pro = prop_sca)
+head(df_prop, 16)
+
+# STATISTICAL ANALYSIS
+
+t.test(head(df_prop$pro, 16), head(df_prop$pro, 30), alternative = "two.sided", conf.level = 0.95)
+t.test(head(df_prop$pro, 16), head(df_prop$pro, 50), alternative = "two.sided", conf.level = 0.95)
+t.test(head(df_prop$pro, 30), head(df_prop$pro, 50), alternative = "two.sided", conf.level = 0.95)
+
+anno_df_sca = data.frame(group1 = "3mb", group2 = "4mb", p.value = p3vs4$p.value, y_pos = "30")
+anno_df_sca
+
+threshold = data.frame(thres = c("4mb", "4mb", "3mb", "3mb", "2.5mb", "2.5mb"), cut = rep(c("above", "below"), 3), size = c(sum(sca_hist$x[sca_hist$x >= 4000000]), sum(sca_hist$x[sca_hist$x <= 4000000]), sum(sca_hist$x[sca_hist$x >= 3000000]), sum(sca_hist$x[sca_hist$x <= 3000000]), sum(sca_hist$x[sca_hist$x >= 2500000]), sum(sca_hist$x[sca_hist$x <= 2500000])))
+
+
+ggplot(threshold) + geom_bar(aes(x = thres, y= size, fill=cut), position = "stack", stat = "identity") +
+  xlab("Threshold") + 
+  ylab("Count") +
+  labs(fill="Scaffolds") +
+  theme_gray() +
+  scale_fill_manual(values=c("#6276F6", "#5EBF75")) +
+  theme(legend.position = c(0.2, 0.2)) 
+ggsave(file="sca2.png", width=10, height=10, dpi=300)
+```
+
+```{r}
+families <- read_excel("C:/Users/52722/Desktop/Agave/genome/tes/families_count.xlsx")
+
+ggplot(families) + geom_bar(aes(x= class, y= count, fill=family), position = "stack", stat = "identity") +
+  xlab("Transposable Element Class") + 
+  ylab("Count") +
+  labs(fill="Family") +
+  theme(text = element_text(size=30)) +
+  theme(legend.position = c(0.2, 0.6))
+ggsave(file="families.png", width=10, height=10, dpi=300)
+```
+
+
+```{r}
+# load the DECIPHER library in R
+library(DECIPHER)
+
+# specify the path to each FASTA file (in quotes)
+# each genome must be given a unique identifier here
+# for example: Genome1, Genome2, etc.
+fas <- c(Scaffold_1="../sff/small_1.fasta",
+         Scaffold_2="../sff/small_2.fasta",
+         Scaffold_3="../sff/small_3.fasta",
+         Scaffold_4="../sff/small_4.fasta",
+         Scaffold_5="../sff/small_5.fasta",
+         Scaffold_6="../sff/small_6.fasta",
+         Scaffold_7="../sff/small_7.fasta",
+         Scaffold_8="../sff/small_8.fasta",
+         Scaffold_9="../sff/small_9.fasta",
+         Scaffold_10="../sff/small_10.fasta",
+         Scaffold_11="../sff/small_11.fasta",
+         Scaffold_12="../sff/small_12.fasta",
+         Scaffold_13="../sff/small_13.fasta",
+         Scaffold_14="../sff/small_14.fasta",
+         Scaffold_15="../sff/small_15.fasta",
+         Scaffold_16="../sff/small_16.fasta"
+         )
+
+# specify where to create the new sequence database
+db <- "sacaffolds.dbSQLite"
+
+# load the sequences from the file in a loop
+for (i in seq_along(fas)) {
+   Seqs2DB(fas[i], "FASTA", db, names(fas[i]))
+}
+
+# map the syntenic regions between each genome pair
+synteny <- FindSynteny(db)
+```
+
+```{r}
+plot(synteny)
+```
+
+```{bash}
+# BUILD BED FILES OF THE ELEMENTS FROM THE 16TH LONGEST SCAFFOLDS
+
+#{declare -a scaff=("Sc0000000" "Sc0000001" "Sc0000002" "Sc0000003" "Sc0000004" "Sc0000005" "Sc0000006" "Sc0000007" "Sc0000008" "Sc0000009" "Sc0000010" "Sc0000011" "Sc0000012" "Sc0000013" "Sc0000014" "Sc0000015")
+rm exome.bed
+rm teRNAome.bed
+rm teDNAome.bed
+#for x in  "${scaff[@]}"
+do
+echo "working with $x"
+grep -w "$x" ../jcetz/AGAVEv3_TOT_snap1.all.gff | grep -w 'exon' | cut -f 1,3,4,5 | sed 's/Sc00000/S/' >> exome.bed
+head -n 1 exome.bed
+tail -n 1 exome.bed
+grep -w "$x" ../jcetz/AGAVEv3_TOT_snap1.all.gff | grep 'LTR' | grep -v "protein" | cut -f 1,2,4,5 | sed 's/repeat_gff:repeatmasker/Class1_TE/' |  sed 's/Sc00000/S/' >> teRNAome.bed
+grep -w "$x" ../jcetz/AGAVEv3_TOT_snap1.all.gff | grep 'LINE' | grep -v "protein" |cut -f 1,2,4,5 | sed 's/repeat_gff:repeatmasker/Class1_TE/' |  sed 's/Sc00000/S/' >> teRNAome.bed
+grep -w "$x" ../jcetz/AGAVEv3_TOT_snap1.all.gff | grep 'SINE' | grep -v "protein" |cut -f 1,2,4,5 | sed 's/repeat_gff:repeatmasker/Class1_TE/' | sed 's/Sc00000/S/' >> teRNAome.bed
+head -n 1 teRNAome.bed
+tail -n 1 teRNAome.bed
+grep -w "$x" ../jcetz/AGAVEv3_TOT_snap1.all.gff | grep 'DNA' | grep -v "protein" |cut -f 1,2,4,5 | sed 's/repeat_gff:repeatmasker/Class2_TE/' | sed 's/Sc00000/S/' >> teDNAome.bed
+head -n 1 teDNAome.bed
+tail -n 1 teDNAome.bed
+echo "$x finished"
+echo "____________________________________________________________________________________________________"
+done}
+```
+
+#   CIRCOS PLOT   
+
+# WE GET THE SFF LENGHTS 
+
+```{bash}
+head sca_lengths.tab -n 16 | sed 's/Sc00000/S/' > sixt.sca.tab
+```
+
+
+```{r}
+sff.l.bed = read.table("sixt.sca.tab")
+sff.l.bed = data.frame(sff.l.bed$V1, 1, sff.l.bed$V2)
+colnames(sff.l.bed) = c("Scaffold", "Start", "End")
+sff.l.bed
+```
+
+# GET CHOORDINATES
+```{r}
+exome = read.table("../sff/exome.bed")
+exome = exome[,-2]
+
+teRNAome = read.table("../sff/teRNAome.bed")
+teRNAome = teRNAome[,-2]
+
+teDNAome = read.table("../sff/teDNAome.bed")
+teDNAome = teDNAome[,-2]
+
+library(circlize)
+
+{png(file="circular_genome.png", width=2000, height=2000)
+circos.genomicInitialize(sff.l.bed, plotType = "labels", labels.cex = 8)
+circos.track(ylim = c(0, 1), bg.border = NA, bg.col = rep(c("grey", "black"), 8) , track.height = 0.05)
+circos.genomicDensity(exome, col = c("#5EBF75"), track.height = 0.1, count_by = "number")
+circos.genomicDensity(teRNAome, col = c("#6276F6"), track.height = 0.1, count_by = "number")
+circos.genomicDensity(teDNAome, col = c("#F97C31"), track.height = 0.1, count_by = "number")
+circos.clear()
+dev.off()
+}
+```
+
+
+```{r}
+
+# DIFERENCIAL EXPRESSION ANALYSIS
+
+# PREPARE MATRIX AND METADATA
+countData                        <- as.matrix(read.csv("../../transcriptome/agave_t_count.tsv", row.names = 1, header = TRUE, sep = "\t"))
+colData                          <- read.csv("../../transcriptome/SraRunInfo.csv", sep=",", row.names = 1, header = TRUE)
+
+# ARE ALL SAMPLES INSIDE ROWNAMES IN THE METADATA FILE?
+
+all(rownames(colData) %in% colnames(countData))
+all(rownames(colData) == colnames(countData))
+
+# RUN DGEA
+dds                              <- DESeqDataSetFromMatrix(countData=round(countData),colData=colData,design=~dex)
+dds                              <- DESeq(dds)
+res                              <- results(dds)
+```
+
+```{r}
+atlog = rlog(dds)
+sample_rld_dists                 <- dist(t(assay(atlog)))
+sample_rld_dist_matrix           <- as.matrix(sample_rld_dists)
+rownames(sample_rld_dist_matrix) <- paste( atlog$dex, colnames(atlog), sep = "-" )
+colnames(sample_rld_dist_matrix) <- NULL
+
+{png(file="circular_genome.png", width=2000, height=2000)
+pheatmap(sample_rld_dist_matrix,clustering_distance_rows=sample_rld_dists,clustering_distance_cols=sample_rld_dists, col=met.brewer("Pissaro", 2000), show_rownames=FALSE,show_colnames=TRUE, treeheight_row=0, treeheight_col=0, border_color = NA)
+dev.off()}
+```
+```{r}
+pcaData <- plotPCA(atlog, intgroup = "dex", returnData = TRUE)
+ggplot(pcaData) + geom_point(aes(PC1, PC2, color=group), size= 4) + scale_colour_manual(values = met.brewer("Pissaro", 4)) + theme_bw() + coord_fixed(ratio = 1/2) + guides(color = FALSE)
+```
+
+```{r}
+ggplot() + geom_pointdensity(aes(res$log2FoldChange, -log10(res$pvalue))) +
+  guides(color = FALSE) +
+scale_color_gradientn(colors= met.brewer("Stevens")) +
+scale_x_continuous("log2FoldChange", limits=c(-10,10))+
+scale_y_continuous("-log10(p_value)", limits=c(0,300))
+```
+
+
+```{r}
+# CODING POTENTIAL
+
+ggplot(cpc) + 
+geom_dotplot(aes(x=coding_probability, fill=label), stackdir='centerwhole',binwidth = 0.005) +
+scale_fill_manual(values = met.brewer("Egypt")) 
+```
+
+
+```{r}
+# CODING TRANSCRIPTS
+coding_genes                       <-read.csv("../../transcriptome/coding_genes_count.tsv", header = TRUE, sep = "\t", row.names = 1)
+
+# ARE ALL SAMPLES INSIDE ROWNAMES IN THE METADATA FILE?
+
+all(rownames(colData) %in% colnames(coding_genes))
+all(rownames(colData) == colnames(coding_genes))
+
+# RUN DGEA
+dds_coding                      <- DESeqDataSetFromMatrix(countData=round(coding_genes),colData=colData,design=~dex)
+dds_coding                      <- DESeq(dds_coding)
+res_coding                      <- results(dds_coding)
+```
+
+```{r}
+atlog_c = rlog(dds_coding)
+sample_cod_dists                 <- dist(t(assay(atlog_c)))
+sample_cod_dist_matrix           <- as.matrix(sample_cod_dists)
+rownames(sample_cod_dist_matrix) <- paste( atlog_c$dex, colnames(atlog_c), sep = "-" )
+colnames(sample_cod_dist_matrix) <- NULL
+
+{png(file="codingheatmap.png", width=300, height=300)
+pheatmap(sample_cod_dist_matrix,clustering_distance_rows=sample_cod_dists,clustering_distance_cols=sample_cod_dists, col=met.brewer("Pissaro", 2000), show_rownames=FALSE,show_colnames=TRUE, treeheight_row=0, treeheight_col=0, border_color = NA)
+dev.off()}
+```
+```{r}
+pcaData_c <- plotPCA(atlog_c, intgroup = "dex", returnData = TRUE)
+  ggplot(pcaData_c) + geom_point(aes(PC1, PC2, color=group), size= 5) +
+  geom_vline(yintercept=0, xintercept=0) +
+  geom_hline(xintercept=0, yintercept=0) +
+  scale_colour_manual(values = met.brewer("Degas")) +
+  theme(text = element_text(size=30)) +
+  guides(color="none") +
+  theme(legend.position = c(0.4, 0.6)) 
+ggsave(file="codingpca.png", width=6, height=6, dpi=300)
+```
+
+```{r}
+ggplot() + geom_pointdensity(aes(res_coding$log2FoldChange, -log10(res_coding$pvalue))) +
+  guides(color = FALSE) +
+scale_color_gradientn(colors= met.brewer("Stevens")) +
+scale_x_continuous("log2FoldChange", limits=c(-10,10))+
+scale_y_continuous("-log10(p_value)", limits=c(0,300)) +
+   theme(text = element_text(size=30)) 
+ggsave(file="codingvol.png", width=6, height=6, dpi=300)
+```
+
+
+```{r}
+# NON-CODING TRANSCRIPTS
+noncoding_genes                       <-read.csv("../../transcriptome/noncoding_genes_count.tsv", header = TRUE, sep = "\t", row.names = 1)
+
+# ARE ALL SAMPLES INSIDE ROWNAMES IN THE METADATA FILE?
+
+all(rownames(colData) %in% colnames(noncoding_genes))
+all(rownames(colData) == colnames(noncoding_genes))
+
+# RUN DGEA
+dds_noncoding                      <- DESeqDataSetFromMatrix(countData=round(noncoding_genes),colData=colData,design=~dex)
+dds_noncoding                      <- DESeq(dds_noncoding)
+res_noncoding                      <- results(dds_noncoding)
+```
+
+```{r}
+atlog_nc = rlog(dds_noncoding)
+sample_ncod_dists                 <- dist(t(assay(atlog_nc)))
+sample_ncod_dist_matrix           <- as.matrix(sample_ncod_dists)
+rownames(sample_ncod_dist_matrix) <- paste( atlog_nc$dex, colnames(atlog_nc), sep = "-" )
+colnames(sample_ncod_dist_matrix) <- NULL
+
+{png(file="noncodingheatmap.png", width=300, height=300)
+pheatmap(sample_ncod_dist_matrix, clustering_distance_rows=sample_ncod_dists, clustering_distance_cols=sample_ncod_dists, col=met.brewer("Pissaro", 2000), show_rownames=FALSE,show_colnames=TRUE, treeheight_row=0, treeheight_col=0, border_color = NA)
+dev.off()}
+```
+```{r}
+pcaData_nc <- plotPCA(atlog_nc, intgroup = "dex", returnData = TRUE)
+ggplot(pcaData_nc) + geom_point(aes(PC1, PC2, color=group), size= 4) + scale_colour_manual(values = met.brewer("Degas")) +
+  geom_vline(yintercept=0, xintercept=0) +
+  geom_hline(xintercept=0, yintercept=0) +
+  theme(text = element_text(size=30)) # +
+  guides(color="none") +
+  theme(legend.position = c(0.4, 0.6)) 
+ggsave(file="noncodingpca.png", width=6, height=6, dpi=300)
+```
+
+```{r}
+ggplot() + geom_pointdensity(aes(res_noncoding$log2FoldChange, -log10(res_noncoding$pvalue))) +
+  guides(color = FALSE) +
+scale_color_gradientn(colors= met.brewer("Stevens")) +
+scale_x_continuous("log2FoldChange", limits=c(-10,10))+
+scale_y_continuous("-log10(p_value)", limits=c(0,300)) +
+   theme(text = element_text(size=30)) 
+ggsave(file="noncodingvol.png", width=6, height=6, dpi=300)
+```
+
+```{r}
+# TRANSPOSABLE ELEMENTS
+tes                       <-read.csv("../../transcriptome/tes_count.tsv", header = TRUE, sep = "\t", row.names = 1)
+
+# ARE ALL SAMPLES INSIDE ROWNAMES IN THE METADATA FILE?
+
+all(rownames(colData) %in% colnames(tes))
+all(rownames(colData) == colnames(tes))
+
+# RUN DGEA
+dds_tes                      <- DESeqDataSetFromMatrix(countData=round(tes),colData=colData,design=~dex)
+dds_tes                      <- DESeq(dds_tes)
+res_tes                      <- results(dds_tes)
+```
+
+```{r}
+atlog_tes = rlog(dds_tes)
+sample_tes_dists                 <- dist(t(assay(atlog_tes)))
+sample_tes_dist_matrix           <- as.matrix(sample_tes_dists)
+rownames(sample_tes_dist_matrix) <- paste( atlog_tes$dex, colnames(atlog_tes), sep = "-" )
+colnames(sample_tes_dist_matrix) <- NULL
+
+#{png(file="tesheatmap.png", width=300, height=300)
+pheatmap(sample_tes_dist_matrix, clustering_distance_rows=sample_tes_dists, clustering_distance_cols=sample_tes_dists, col=met.brewer("Pissaro", 2000), show_rownames=FALSE,show_colnames=TRUE, treeheight_row=0, treeheight_col=0, border_color = NA)
+#dev.off()}
+```
+
+```{r}
+pcaData_tes <- plotPCA(atlog_tes, intgroup = "dex", returnData = TRUE)
+  ggplot(pcaData_tes) + geom_point(aes(PC1, PC2, color=group), size= 5) +
+  geom_vline(yintercept=0, xintercept=0) +
+  geom_hline(xintercept=0, yintercept=0) +
+  scale_colour_manual(values = met.brewer("Degas")) +
+  theme(text = element_text(size=30)) # +
+  guides(color="none") +
+  theme(legend.position = c(0.4, 0.6)) 
+ggsave(file="tespca.png", width=6, height=6, dpi=300)
+```
+
+```{r}
+ggplot() + geom_pointdensity(aes(res_tes$log2FoldChange, -log10(res_tes$pvalue))) +
+  guides(color = FALSE) +
+scale_color_gradientn(colors= met.brewer("Stevens")) +
+scale_x_continuous("log2FoldChange", limits=c(-10,10))+
+scale_y_continuous("-log10(p_value)", limits=c(0,300)) +
+   theme(text = element_text(size=30)) 
+#ggsave(file="tesvol.png", width=6, height=6, dpi=300)
+```
+
+
+```{bash}
+grep -w "Sc0000000" ../gff/annotation.gff | grep -v "gene" | grep -v "mRNA" | grep -v "CDS" | grep -v "UTR" | cut -f 3,4 > first_scaffols_positions.tsv
+```
+
+```{r}
+library(ggthemes)
+first_scaffols_positions = read.delim("first_scaffols_positions.tsv", header = TRUE)
+ggplot(first_scaffols_positions, aes(position, after_stat(count), fill = element)) +
+  geom_density(position = "fill") + theme_void() 
+```
+
