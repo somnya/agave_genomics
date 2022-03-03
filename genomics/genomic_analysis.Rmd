@@ -41,6 +41,7 @@ library(pheatmap)
 library(MetBrewer)
 library(ggplot2)
 library(pheatmap)
+library(ggthemes)
 getwd()
 getRversion()
 ```
@@ -76,14 +77,14 @@ grep "three_prime_UTR" jcetz/AGAVEv3_TOT_snap1.all.gff |awk '{print $0 (// ? "_"
 
 # GENES: Scaffold+G+ID
 grep "gene" jcetz/AGAVEv3_TOT_snap1.all.gff | awk -F'\t' '$3 ~ /gene/ {print $0}' | sed -E 's/ID=\w+\-(\w+).+\gene-(\w+.\w+).+/ID=\1G\2;Name=\1G\2/g' | grep -v "tRNA" > genes.gff
-grep "tRNA" jcetz/AGAVEv3_TOT_snap1.all.gff | awk -F'\t' '$3 ~ /gene/ {print $0}' | awk '{$2="tRNA"; print $0}' | sed -E 's/ /\t/g' > trnas.gff # tRNAs
+grep "tRNA" jcetz/AGAVEv3_TOT_snap1.all.gff | awk -F'\t' '$3 ~ /gene/ {print $0}' | awk '{$2="tRNA"; print $0}' | sed -E 's/ /\t/g' > trnas.gff # tRNAs, also renamed
 
 # REPEATOME
 cat jcetz/AGAVEv3_TOT_snap1.all.gff | grep "repeatmasker" | cut -f 3 | sort | uniq -c
 3678098 match
 3678098 match_part
 
-# REPEATOME RENAMING: Scaffold+R+ID
+# REPEATOME RENAMING: Scaffold+TE/R+ID
 # THERE SEEMS TO BE TWO TYPES OF ANOTATION, SO, I DID IT DIFFERENT FOR EACH ONE AND EACH TYPE OF REPEAT
 grep ">" raw/consensus_rep_families.fa | sed -E "s/.+#(.+)\s\(\s.+/\1/g" | sort | uniq -c
      15 DNA
@@ -108,7 +109,7 @@ grep ">" raw/consensus_rep_families.fa | sed -E "s/.+#(.+)\s\(\s.+/\1/g" | sort 
       2 LINE/Jockey
       9 LINE/L1
       7 LINE/L2
-      1 LINE/Penelope
+      1 LINE/Penelope # PENELOPE IS NOT A LINE
       1 LINE/R1
       8 LINE/RTE-BovB
      10 LTR
@@ -128,26 +129,89 @@ grep ">" raw/consensus_rep_families.fa | sed -E "s/.+#(.+)\s\(\s.+/\1/g" | sort 
       1 buffer
 # FAMILY SIZE DO NOT TO MATCH NUMBER OF REPEATS IN THE GENOME
 
-# LTR FAMILES
+# FOR TES WITH ORDEN OR SUPERFAMILY (I CHANGUED LTR TO "DNA" AND THEN TO "LINE")
 cut -f 1-9 jcetz/AGAVEv3_TOT_snap1.all.gff | grep "repeatmasker" | grep -v "match_part" | grep "rnd" | grep "LTR%" |
-sed -E 's/ID=(\w+):.+\:(\w+):.+\genus:(\w+).+F(\w+);.+/ID=\1TE\2;Name=\3\/\4:\2/g' > ltrf.gff
+sed -E 's/ID=(\w+):.+\:(\w+):.+\genus:(\w+).+F(\w+.+);.+/ID=\1TE\2;Name=\3\/\4:\2/g' > ltrf.gff
+# FOR LTRS AND DNATES WITH NO ORDER ANNOTATION
+cut -f 1-9 jcetz/AGAVEv3_TOT_snap1.all.gff | grep "repeatmasker" | grep -v "match_part" | grep "rnd" | grep "LTR;" |
+sed -E 's/ID=(\w+):.+\:(\w+):.+\genus:(\w+);.+/ID=\1TE\2;Name=\3\/\4:\2/g' > ltr.gff
+# HELITRONS
+cut -f 1-9 jcetz/AGAVEv3_TOT_snap1.all.gff | grep "repeatmasker" | grep -v "match_part" | grep "rnd" | grep "Helitron" | sed -E 's/ID=(\w+):.+\:(\w+):.+\F(\w+);.+/ID=\1TE\2;Name=\3:\2/g' > helitrons.gff
 
-# All together
+# OTHER REPEATS ARE TOGETHER; Satellite + Simple_repeat + Unknown
+cut -f 1-9 jcetz/AGAVEv3_TOT_snap1.all.gff | grep "repeatmasker" | grep -v "match_part" | grep "rnd" | grep "Unknown"
+ | sed -E 's/ID=(\w+):.+\:(\w+):.+/ID=\1R\2;Name=Unknown:\2/g' >> repeats.gff
+
+# TES GFF
 cat genes.gff cds.gff exons.gff mrnas.gff trnas.gff utrs.gff repeats.gff > all.gff
 sort -k 1 all.gff > annotation.gff
 
 ```
 
+# PHYLOGENETIC ANALYSIS OF TES
+
+```{bash TEs_phylogeny, eval=FALSE, include=FALSE}
+TEsorter ../class_1_tes_consensus.fasta -db rexdb-plant #USING REPEAT EXPLORER DATABASE
+Summary of classifications:
+Order           Superfamily      # of Sequences# of Clade Sequences    # of Clades# of full Domains
+LTR             Copia                       118             88              8             19
+LTR             Gypsy                       103             90              7             22
+pararetrovirus  unknown                       1              0              0              0
+LINE            unknown                      11              0              0              0
+
+TEsorter ../class_1_tes_consensus.fasta -db gydb #Using GYPSY DATABASE
+Summary of classifications:
+Order           Superfamily      # of Sequences# of Clade Sequences    # of Clades# of full Domains
+LTR             Caulimoviridae                2              1              1              0
+LTR             Copia                       114             83              6             14
+LTR             Gypsy                        91             77              6             21
+LTR             unknown                       1              1              1              0
+Unknown         unknown                       1              1              1              0
+
+# ALINGMENT OF RT DOMAINS OBTAINED IN THE FIRST RUN
+cat class_1_tes_consensus.fasta.rexdb-plant.dom.tsv | grep -P "\-RT\t" | get_record.py -i class_1_tes_consensus.fasta.rexdb-plant.dom.faa -o RT_domains.faa -t fasta
+
+mafft --auto RT_domains.faa > RT_domains.aln
+Strategy: L-INS-i (Probably most accurate, very slow)
+
+iqtree -s RT_domains.aln -bb 1000 -nt AUTO
+Best-fit model according to BIC: LG+G4
+
+# ALINGMENT OF WHOLE DNA TEs
+mafft --auto ../class_2_tes_consensus.fasta > class_2.aln
+Strategy: FFT-NS-2 (Fast but rough)
+
+../../tes/iq_tree/bin/iqtree -s class_2.aln -bb 1000 -nt AUTO
+Best-fit model: K3Pu+F+G4 chosen according to BIC
+
+# THE TREE WAS NOT ACCCURATE SO I RAN TESORTER USING DNATES ONLY
+TEsorter ../class_2_tes_consensus.fasta -db rexdb-plant
+Order           Superfamily      # of Sequences# of Clade Sequences    # of Clades# of full Domains
+LTR             Copia (?!)                    1              1              1              0
+TIR             EnSpm_CACTA                   2              0              0              0
+TIR             MuDR_Mutator                  5              0              0              0
+TIR             hAT                           5              0              0              0
+
+cat class_2_tes_consensus.fasta.rexdb-plant.dom.tsv | grep -P "\-TPase\t" | get_record.py -i class_2_tes_c
+onsensus.fasta.rexdb-plant.dom.faa -o TPase_domains.faa -t fasta
+
+mafft --auto TPase_domains.faa > TPase.aln
+L-INS-i (Probably most accurate, very slow)
+
+iq_tree/bin/iqtree -s TPase.aln -bb 1000 -nt AUTO
+Best-fit model: Blosum62 chosen according to BIC
+```
 
 
 ```{bash}
 cut -f 1,4 genome_length.tab > sca_lengths.tab
 ```
 
+# GENOME METADATA
 
 ```{r}
 
-# lENGHT HISTOGRAM 
+# SCAFFOLD lENGHT HISTOGRAM 
 
 sca_lenght = read.table("../sca_lengths.tab")
 #sca_hist <- ifelse(sca_lenght$V2 > 4000000, "grey", "green")[-length(sca_lenght$V2)]
@@ -161,7 +225,7 @@ scale_fill_manual(values=c("#5EBF75", "#6276F6")) + geom_vline(xintercept = 4000
   labs(fill="Scaffolds above 4mb")+
   theme(legend.position = c(0.8, 0.8)) +
     theme(text = element_text(size=30)) 
-ggsave(file="sca1.png", width=12, height=8, dpi=300)
+ggsave(file="scathres.png", width=12, height=8, dpi=300)
 ```
 
 ```{r}
@@ -251,7 +315,7 @@ plot(synteny)
 ```{bash}
 # BUILD BED FILES OF THE ELEMENTS FROM THE 16TH LONGEST SCAFFOLDS
 
-#{declare -a scaff=("Sc0000000" "Sc0000001" "Sc0000002" "Sc0000003" "Sc0000004" "Sc0000005" "Sc0000006" "Sc0000007" "Sc0000008" "Sc0000009" "Sc0000010" "Sc0000011" "Sc0000012" "Sc0000013" "Sc0000014" "Sc0000015")
+#{declare -a scaff=(" " "Sc0000001" "Sc0000002" "Sc0000003" "Sc0000004" "Sc0000005" "Sc0000006" "Sc0000007" "Sc0000008" "Sc0000009" "Sc0000010" "Sc0000011" "Sc0000012" "Sc0000013" "Sc0000014" "Sc0000015")
 rm exome.bed
 rm teRNAome.bed
 rm teDNAome.bed
@@ -514,14 +578,37 @@ scale_y_continuous("-log10(p_value)", limits=c(0,300)) +
 ```
 
 
-```{bash}
-grep -w "Sc0000000" ../gff/annotation.gff | grep -v "gene" | grep -v "mRNA" | grep -v "CDS" | grep -v "UTR" | cut -f 3,4 > first_scaffols_positions.tsv
-```
-
 ```{r}
-library(ggthemes)
-first_scaffols_positions = read.delim("first_scaffols_positions.tsv", header = TRUE)
-ggplot(first_scaffols_positions, aes(position, after_stat(count), fill = element)) +
-  geom_density(position = "fill") + theme_void() 
+first_scaffols_positions = read.delim("data/first_scaffols_positions.tsv", header = TRUE)
+levels(as.factor(first_scaffols_positions$element))
+first_scaffols_positions = first_scaffols_positions %>% mutate(
+    niche = case_when(
+      element %in% c("DNA", "DNA/CMC-EnSpm", "DNA/CMC-Transib", "DNA/hAT-Ac", "DNA/hAT-Tag1", "DNA/hAT-Tip100", "DNA/IS3EU", "DNA/Kolobok-Hydra", "DNA/Maverick", "DNA/Merlin", "DNA/MuLE-MuDR", "DNA/MULE-MuDR", "DNA/TcMar-Tc2") ~ "Class_II",
+      element == "exon" ~ "coding",
+      T ~ "Class_I"
+    )
+  )
+
+# PREVIOUS AESTHETIC DEVELOPMENT
+# ALPHA FILLING
+alpha_max <- 1
+alpha_min <- 0.4
+alpha_vals <- c(
+  seq(alpha_max, alpha_min, length.out = 13), 1,
+  seq(alpha_min, alpha_max, length.out = 10)
+)
+# OVERIDE ALPHA + FILL AESTHETICS
+color_overide=c(rep(2, 13), 3, rep(1,10))
+colors=  met.brewer("Stevens")
+
+ggplot(first_scaffols_positions, aes(position, after_stat(count), fill = niche, alpha=element)) +
+  geom_density(position = "fill", adjust=1/3) + scale_fill_manual(values = met.brewer("Stevens")) + 
+  scale_alpha_manual(values = alpha_vals) + 
+  labs(x = "Scaffold position", y= "Proportion", alpha= "Genomic Element") +
+  guides(
+    fill = guide_none(),
+    alpha = guide_legend(override.aes = list(fill = colors[color_overide]),
+    nrow = 4, byrow = TRUE)) +
+  theme(legend.position = "bottom") 
 ```
 
