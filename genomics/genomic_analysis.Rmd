@@ -5,13 +5,11 @@ date: "02/10/2021"
 output:
     prettydoc::html_pretty:
     theme: cayman
-
----
-
 <style>
 body {
 text-align: justify}
 </style>
+---
 
 # PART 1: EVOLUTIONARY GENOMICS
 ## Bachelor thesis. Agrigenomic Sciences. 
@@ -42,9 +40,11 @@ library(MetBrewer)
 library(ggplot2)
 library(pheatmap)
 library(ggthemes)
+library(circlize)
 getwd()
 getRversion()
 ```
+
 # GFF CLEANING
 
 Dr. José Cetz annotated the genome. Raw gff files were provided by him. I implemented an arabidopsis-like nomenclature to rename each genomic element and its attributes.
@@ -203,62 +203,51 @@ Best-fit model: Blosum62 chosen according to BIC
 ```
 
 
-```{bash}
-cut -f 1,4 genome_length.tab > sca_lengths.tab
+# TE CHARACTERIZATION
+
+```{r landscape}
+
+# LANDSCAPE OF ANNOTATED ELEMENTS IN THE LONGEST SCAFFOLD
+
+first_scaffols_positions = read.delim("data/first_scaffols_positions.tsv", header = TRUE)
+levels(as.factor(first_scaffols_positions$element))
+
+# GROUPING BY CHOORDINATES
+first_scaffols_positions = first_scaffols_positions %>% mutate(
+    niche = case_when(
+      element %in% c("DNA", "DNA/CMC-EnSpm", "DNA/CMC-Transib", "DNA/hAT-Ac", "DNA/hAT-Tag1", "DNA/hAT-Tip100", "DNA/IS3EU", "DNA/Kolobok-Hydra", "DNA/Maverick", "DNA/Merlin", "DNA/MuLE-MuDR", "DNA/MULE-MuDR", "DNA/TcMar-Tc2") ~ "Class_II",
+      element == "exon" ~ "coding",
+      T ~ "Class_I"
+    )
+  )
+
+# PREVIOUS AESTHETIC DEVELOPMENT
+# ALPHA FILLING
+alpha_max <- 1
+alpha_min <- 0.4
+alpha_vals <- c(
+  seq(alpha_max, alpha_min, length.out = 13), 1,
+  seq(alpha_min, alpha_max, length.out = 10)
+)
+# OVERIDE ALPHA + FILL AESTHETICS
+color_overide=c(rep(2, 13), 3, rep(1,10))
+colors=  met.brewer("Stevens")
+
+#P LOTING
+ggplot(first_scaffols_positions, aes(position, after_stat(count), fill = niche, alpha=element)) +
+  geom_density(position = "fill", adjust=1/5, color="white") + scale_fill_manual(values = met.brewer("Stevens")) + 
+  scale_alpha_manual(values = alpha_vals) + 
+  labs(x = "Scaffold position", y= "Proportion", alpha= "Genomic Element") +
+  guides(
+    fill = guide_none(),
+    alpha = guide_legend(override.aes = list(fill = colors[color_overide]),
+    nrow = 4, byrow = TRUE)) +
+  theme(legend.position = "bottom") 
 ```
 
-# GENOME METADATA
+```{r stacked_bar}
+#BARPLOT OF TOTAL COUNTS
 
-```{r}
-
-# SCAFFOLD lENGHT HISTOGRAM 
-
-sca_lenght = read.table("../sca_lengths.tab")
-#sca_hist <- ifelse(sca_lenght$V2 > 4000000, "grey", "green")[-length(sca_lenght$V2)]
-#ggplot(sca_lenght, aes(V2)) + geom_histogram(binwidth = 10000) + theme_bw()
-
-sca_hist <- data.frame( x=sca_lenght$V2, fourmb=sca_lenght$V2>4000000)
-
-qplot(x, data=sca_hist,fill=fourmb, binwidth=10000) +
-theme_gray() +
-scale_fill_manual(values=c("#5EBF75", "#6276F6")) + geom_vline(xintercept = 4000000, color="black", linetype="dashed", size=1) + xlab("Length") + ylab("Scaffold count")  +
-  labs(fill="Scaffolds above 4mb")+
-  theme(legend.position = c(0.8, 0.8)) +
-    theme(text = element_text(size=30)) 
-ggsave(file="scathres.png", width=12, height=8, dpi=300)
-```
-
-```{r}
-# Accumulated size (16th longest scaffolds)
-
-tot = sum(sca_lenght$V2)
-prop_sca = sca_lenght$V2 / tot * 100
-df_prop = data.frame(sca_lenght$V1, pro = prop_sca)
-head(df_prop, 16)
-
-# STATISTICAL ANALYSIS
-
-t.test(head(df_prop$pro, 16), head(df_prop$pro, 30), alternative = "two.sided", conf.level = 0.95)
-t.test(head(df_prop$pro, 16), head(df_prop$pro, 50), alternative = "two.sided", conf.level = 0.95)
-t.test(head(df_prop$pro, 30), head(df_prop$pro, 50), alternative = "two.sided", conf.level = 0.95)
-
-anno_df_sca = data.frame(group1 = "3mb", group2 = "4mb", p.value = p3vs4$p.value, y_pos = "30")
-anno_df_sca
-
-threshold = data.frame(thres = c("4mb", "4mb", "3mb", "3mb", "2.5mb", "2.5mb"), cut = rep(c("above", "below"), 3), size = c(sum(sca_hist$x[sca_hist$x >= 4000000]), sum(sca_hist$x[sca_hist$x <= 4000000]), sum(sca_hist$x[sca_hist$x >= 3000000]), sum(sca_hist$x[sca_hist$x <= 3000000]), sum(sca_hist$x[sca_hist$x >= 2500000]), sum(sca_hist$x[sca_hist$x <= 2500000])))
-
-
-ggplot(threshold) + geom_bar(aes(x = thres, y= size, fill=cut), position = "stack", stat = "identity") +
-  xlab("Threshold") + 
-  ylab("Count") +
-  labs(fill="Scaffolds") +
-  theme_gray() +
-  scale_fill_manual(values=c("#6276F6", "#5EBF75")) +
-  theme(legend.position = c(0.2, 0.2)) 
-ggsave(file="sca2.png", width=10, height=10, dpi=300)
-```
-
-```{r}
 families <- read_excel("C:/Users/52722/Desktop/Agave/genome/tes/families_count.xlsx")
 
 ggplot(families) + geom_bar(aes(x= class, y= count, fill=family), position = "stack", stat = "identity") +
@@ -270,49 +259,9 @@ ggplot(families) + geom_bar(aes(x= class, y= count, fill=family), position = "st
 ggsave(file="families.png", width=10, height=10, dpi=300)
 ```
 
+# CIRCOS PLOT
 
-```{r}
-# load the DECIPHER library in R
-library(DECIPHER)
-
-# specify the path to each FASTA file (in quotes)
-# each genome must be given a unique identifier here
-# for example: Genome1, Genome2, etc.
-fas <- c(Scaffold_1="../sff/small_1.fasta",
-         Scaffold_2="../sff/small_2.fasta",
-         Scaffold_3="../sff/small_3.fasta",
-         Scaffold_4="../sff/small_4.fasta",
-         Scaffold_5="../sff/small_5.fasta",
-         Scaffold_6="../sff/small_6.fasta",
-         Scaffold_7="../sff/small_7.fasta",
-         Scaffold_8="../sff/small_8.fasta",
-         Scaffold_9="../sff/small_9.fasta",
-         Scaffold_10="../sff/small_10.fasta",
-         Scaffold_11="../sff/small_11.fasta",
-         Scaffold_12="../sff/small_12.fasta",
-         Scaffold_13="../sff/small_13.fasta",
-         Scaffold_14="../sff/small_14.fasta",
-         Scaffold_15="../sff/small_15.fasta",
-         Scaffold_16="../sff/small_16.fasta"
-         )
-
-# specify where to create the new sequence database
-db <- "sacaffolds.dbSQLite"
-
-# load the sequences from the file in a loop
-for (i in seq_along(fas)) {
-   Seqs2DB(fas[i], "FASTA", db, names(fas[i]))
-}
-
-# map the syntenic regions between each genome pair
-synteny <- FindSynteny(db)
-```
-
-```{r}
-plot(synteny)
-```
-
-```{bash}
+```{bash script_bed_16sff, eval=FALSE, include=FALSE}
 # BUILD BED FILES OF THE ELEMENTS FROM THE 16TH LONGEST SCAFFOLDS
 
 #{declare -a scaff=(" " "Sc0000001" "Sc0000002" "Sc0000003" "Sc0000004" "Sc0000005" "Sc0000006" "Sc0000007" "Sc0000008" "Sc0000009" "Sc0000010" "Sc0000011" "Sc0000012" "Sc0000013" "Sc0000014" "Sc0000015")
@@ -338,24 +287,19 @@ echo "__________________________________________________________________________
 done}
 ```
 
-#   CIRCOS PLOT   
-
-# WE GET THE SFF LENGHTS 
-
 ```{bash}
+# WE GET THE SFF LENGHTS 
 head sca_lengths.tab -n 16 | sed 's/Sc00000/S/' > sixt.sca.tab
 ```
 
 
-```{r}
+```{r circos plot}
+# GET CHOORDINATES
 sff.l.bed = read.table("sixt.sca.tab")
 sff.l.bed = data.frame(sff.l.bed$V1, 1, sff.l.bed$V2)
 colnames(sff.l.bed) = c("Scaffold", "Start", "End")
 sff.l.bed
-```
 
-# GET CHOORDINATES
-```{r}
 exome = read.table("../sff/exome.bed")
 exome = exome[,-2]
 
@@ -365,7 +309,7 @@ teRNAome = teRNAome[,-2]
 teDNAome = read.table("../sff/teDNAome.bed")
 teDNAome = teDNAome[,-2]
 
-library(circlize)
+# PLOT THE CIRCOS
 
 {png(file="circular_genome.png", width=2000, height=2000)
 circos.genomicInitialize(sff.l.bed, plotType = "labels", labels.cex = 8)
@@ -378,11 +322,31 @@ dev.off()
 }
 ```
 
+# CHARACTERIZATION OF TE-GENE RELATIONSHIP
+
+```{bash upstream_tes, eval=FALSE, include=FALSE}
+complementBed -i mrnas.bed -g sca_lengths.tab > intergenic_regions.bed
+```
 
 ```{r}
+intergenic = read.delim("data/intergenic_regions.bed", sep = "\t")
+colnames(intergenic) = c("sff", "start", "end")
+interg_lenghts=intergenic$end-intergenic$start
+summary(interg_lenghts)
+# MEAN = 17K
+# I REMOVED MANY REGIONS SINCE THERE ARE MANY SHORT SCAFFOLDS
+intnorm= which(interg_lenghts> 1000)
+summary(intnorm)
+sd(intnorm)
+# MEAN = 23K +- 13K
+ggplot() + geom_boxplot(aes("", intnorm))
 
-# DIFERENCIAL EXPRESSION ANALYSIS
+```
 
+
+# DIFERENTIAL EXPRESSION ANALYSIS
+
+```{r}
 # PREPARE MATRIX AND METADATA
 countData                        <- as.matrix(read.csv("../../transcriptome/agave_t_count.tsv", row.names = 1, header = TRUE, sep = "\t"))
 colData                          <- read.csv("../../transcriptome/SraRunInfo.csv", sep=",", row.names = 1, header = TRUE)
@@ -578,37 +542,5 @@ scale_y_continuous("-log10(p_value)", limits=c(0,300)) +
 ```
 
 
-```{r}
-first_scaffols_positions = read.delim("data/first_scaffols_positions.tsv", header = TRUE)
-levels(as.factor(first_scaffols_positions$element))
-first_scaffols_positions = first_scaffols_positions %>% mutate(
-    niche = case_when(
-      element %in% c("DNA", "DNA/CMC-EnSpm", "DNA/CMC-Transib", "DNA/hAT-Ac", "DNA/hAT-Tag1", "DNA/hAT-Tip100", "DNA/IS3EU", "DNA/Kolobok-Hydra", "DNA/Maverick", "DNA/Merlin", "DNA/MuLE-MuDR", "DNA/MULE-MuDR", "DNA/TcMar-Tc2") ~ "Class_II",
-      element == "exon" ~ "coding",
-      T ~ "Class_I"
-    )
-  )
 
-# PREVIOUS AESTHETIC DEVELOPMENT
-# ALPHA FILLING
-alpha_max <- 1
-alpha_min <- 0.4
-alpha_vals <- c(
-  seq(alpha_max, alpha_min, length.out = 13), 1,
-  seq(alpha_min, alpha_max, length.out = 10)
-)
-# OVERIDE ALPHA + FILL AESTHETICS
-color_overide=c(rep(2, 13), 3, rep(1,10))
-colors=  met.brewer("Stevens")
-
-ggplot(first_scaffols_positions, aes(position, after_stat(count), fill = niche, alpha=element)) +
-  geom_density(position = "fill", adjust=1/5, color="white") + scale_fill_manual(values = met.brewer("Stevens")) + 
-  scale_alpha_manual(values = alpha_vals) + 
-  labs(x = "Scaffold position", y= "Proportion", alpha= "Genomic Element") +
-  guides(
-    fill = guide_none(),
-    alpha = guide_legend(override.aes = list(fill = colors[color_overide]),
-    nrow = 4, byrow = TRUE)) +
-  theme(legend.position = "bottom") 
-```
 
