@@ -602,7 +602,7 @@ color_overide=c(rep(2, 13), 3, rep(1,10))
 colors=  met.brewer("Stevens")
 
 ggplot(first_scaffols_positions, aes(position, after_stat(count), fill = niche, alpha=element)) +
-  geom_density(position = "fill", adjust=1/3, color="white") + scale_fill_manual(values = met.brewer("Stevens")) + 
+  geom_density(position = "fill", adjust=1/5, color="white") + scale_fill_manual(values = met.brewer("Stevens")) + 
   scale_alpha_manual(values = alpha_vals) + 
   labs(x = "Scaffold position", y= "Proportion", alpha= "Genomic Element") +
   guides(
