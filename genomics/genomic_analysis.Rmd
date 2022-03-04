@@ -41,6 +41,7 @@ library(ggplot2)
 library(pheatmap)
 library(ggthemes)
 library(circlize)
+library(ggridges)
 getwd()
 getRversion()
 ```
@@ -210,7 +211,6 @@ Best-fit model: Blosum62 chosen according to BIC
 # LANDSCAPE OF ANNOTATED ELEMENTS IN THE LONGEST SCAFFOLD
 
 first_scaffols_positions = read.delim("data/first_scaffols_positions.tsv", header = TRUE)
-levels(as.factor(first_scaffols_positions$element))
 
 # GROUPING BY CHOORDINATES
 first_scaffols_positions = first_scaffols_positions %>% mutate(
@@ -326,9 +326,12 @@ dev.off()
 
 ```{bash upstream_tes, eval=FALSE, include=FALSE}
 complementBed -i mrnas.bed -g sca_lengths.tab > intergenic_regions.bed
+bedtools window -a mrnas.bed -b tes.bed -l 25000 -r 0 > upstream_tes.bed
+#I SELECTED COLUMNS AND CLEANED THE TE NAMES
+cut -f 1,2,4,12,13,20 upstream_tes.bed | sed -E 's/ID.+Name=(\w+.+):.+/\1/g' > upstream.tsv
 ```
 
-```{r}
+```{r intergenic_lenghts}
 intergenic = read.delim("data/intergenic_regions.bed", sep = "\t")
 colnames(intergenic) = c("sff", "start", "end")
 interg_lenghts=intergenic$end-intergenic$start
@@ -340,7 +343,29 @@ summary(intnorm)
 sd(intnorm)
 # MEAN = 23K +- 13K
 ggplot() + geom_boxplot(aes("", intnorm))
+# THEREBY, I DECIDED TO USE A 25KB WINDOW ABOVE
+```
 
+```{r}
+upstream = read.delim("data/tesvsgenes.tsv", sep="\t")
+upstream = upstream %>% mutate(
+    len = end-start,
+    tis = tss-start
+         )
+upstream <- upstream[upstream$tis >= 0, ]
+ggplot(upstream) + geom_boxplot(aes(x=len, y=te))
+```
+```{r}
+ggplot(upstream, aes(x=tis, y=te, fill=..x..))+
+   geom_density_ridges_gradient() +
+  theme_ridges() 
+```
+
+```{r}
+ggplot(upstream) + geom_boxplot(aes(x=mean_exp, y=te))
+```
+```{r}
+ggplot(upstream) + geom_bar(aes(x=after_stat(count), y=te))
 ```
 
 
