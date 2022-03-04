@@ -42,6 +42,7 @@ library(pheatmap)
 library(ggthemes)
 library(circlize)
 library(ggridges)
+library(chorddiag)
 getwd()
 getRversion()
 ```
@@ -235,7 +236,7 @@ colors=  met.brewer("Stevens")
 
 #P LOTING
 ggplot(first_scaffols_positions, aes(position, after_stat(count), fill = niche, alpha=element)) +
-  geom_density(position = "fill", adjust=1/5, color="white") + scale_fill_manual(values = met.brewer("Stevens")) + 
+  geom_density(position = "fill", adjust=1/5, color="white", size=0.2) + scale_fill_manual(values = met.brewer("Stevens")) + 
   scale_alpha_manual(values = alpha_vals) + 
   labs(x = "Scaffold position", y= "Proportion", alpha= "Genomic Element") +
   guides(
@@ -243,6 +244,7 @@ ggplot(first_scaffols_positions, aes(position, after_stat(count), fill = niche, 
     alpha = guide_legend(override.aes = list(fill = colors[color_overide]),
     nrow = 4, byrow = TRUE)) +
   theme(legend.position = "bottom") 
+ggsave(file="figures/landscape.png", width=12, height=6, dpi=600)
 ```
 
 ```{r stacked_bar}
@@ -353,19 +355,54 @@ upstream = upstream %>% mutate(
     tis = tss-start
          )
 upstream <- upstream[upstream$tis >= 0, ]
-ggplot(upstream) + geom_boxplot(aes(x=len, y=te))
-```
-```{r}
-ggplot(upstream, aes(x=tis, y=te, fill=..x..))+
-   geom_density_ridges_gradient() +
-  theme_ridges() 
+max(upstream$tis)
+# THERE ARE HIGH VALUES, I REMOVE THEM
+upstream=upstream[upstream$tis <= 10000, ]
+upstream$te[upstream$te = "DNA"]
+upstream = upstream %>% mutate(
+    niche = case_when(
+      te %in% c("DNA", "DNA/CMC-EnSpm", "DNA/CMC-Transib", "DNA/hAT-Ac", "DNA/hAT-Tag1", "DNA/hAT-Tip100", "DNA/IS3EU", "DNA/Kolobok-Hydra", "DNA/Maverick", "DNA/Merlin", "DNA/MuLE-MuDR", "DNA/MULE-MuDR", "DNA/TcMar-Tc2") ~ "Class_II",
+      element == "exon" ~ "coding",
+      T ~ "Class_I"
+    )
+  )
+ggplot(upstream) + geom_boxplot(aes(x=len, y=te)) + 
+  theme_hc()+
+  labs(x="Lenght")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+ggsave(file="figures/lenght.png", width=4, height=8, dpi=600)
 ```
 
 ```{r}
-ggplot(upstream) + geom_boxplot(aes(x=mean_exp, y=te))
+ggplot(upstream, aes(x=tis, y=te))+
+   geom_density_ridges_gradient(alpha=0.4, quantile_lines = TRUE, quantiles=2) + 
+  theme_hc()+
+  labs(x="Distance from gene", y=NULL)+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+ggsave(file="figures/tis.png", width=4, height=8, dpi=600)
 ```
+
 ```{r}
-ggplot(upstream) + geom_bar(aes(x=after_stat(count), y=te))
+ggplot(upstream) + geom_boxplot(aes(x=mean_exp, y=te))+
+  theme_hc()+
+  labs(x="TPM")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+ggsave(file="figures/exp.png", width=4, height=8, dpi=600)
+```
+
+```{r}
+ggplot(upstream) + geom_bar(aes(x=after_stat(count), y=te), fill="black") + 
+  theme_hc()+
+  labs(x="Count")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+ggsave(file="figures/count.png", width=4, height=8, dpi=600)
+```
+
+```{r}
+chars=upstream[,7:9]
+correlations_chars=cor(chars)
+chorddiag(correlations_chars)
+plotcorr
 ```
 
 
