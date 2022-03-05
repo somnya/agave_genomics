@@ -262,6 +262,50 @@ ggsave(file="families.png", width=10, height=10, dpi=300)
 ```
 
 # CIRCOS PLOT
+```{bash syntenic_blocks, eval=FALSE, include=FALSE}
+# ALLVSALL BLAST
+blastn -query mrnas.fasta -db database -evalue 1e-10 -num_alignments 5 -outfmt 6 -out agave.blast
+# REARRENGE BED FILE TO Chromosome Gene_name Start End
+awk -F '\t' '{print $1,$4,$2,$3}' OFS='\t' "mrnas.bed" > agave.gff
+# RUN MCScanX
+../MCScanX-master/MCScanX agave
+# I DID IT ALSO FO THE 16 SFFS
+# ISOLATION OF GENES IN THE LONGESTS SCAFFOLDS
+          rm mcs_sca.gff
+          for sc in $(cut -f 1 longer.sca.tab)
+          do
+          echo "Searching $sc"
+          cut -f 1-9 gff/mrnas.gff | grep -w "$sc" >> 16.gff
+          done
+# AND THEN THE ABOVE PROCEDURES
+54 alignments generated
+# GET THE BLOCKS
+tail -n+12 16.collinearity | grep -v '##' | sed -E 's/(.)-.+(Sc.+)\s(Sc.+)\t.+/\1\t\2\t\3/g' > blocks.tsv
+# I PROCESSED THEM ON synteny.ipynb TO GET CHOORDINATES OF EACH GENE
+```
+
+```{r choords_blocks}
+# IMPORT FILES
+chr1 = read.delim("data/chr1.tsv", sep = "\t", header = TRUE)
+chr2 = read.delim("data/chr2.tsv", sep = "\t", header = TRUE)
+
+# I AIMED TO GET THE FIRST START CHOORD AND LAST END CHOORD FROM EACH BLOCK AND REMOVE DUPLICATED ROWS
+chr1 = chr1 %>% arrange(block) %>% group_by(block) %>% mutate(start1=min(start), end1=max(end)) 
+chr1 = chr1 %>% subset(select=c("sff", "block", "start1", "end1")) 
+chr1 = chr1[!duplicated(chr1$block),]
+chr1 = chr1 %>% subset(select=c("sff", "start1", "end1"))
+write.table(chr1, "data/region1.tsv", quote=FALSE, sep='\t', row.names = FALSE)
+
+chr2 = chr2 %>% arrange(block) %>% group_by(block) %>% mutate(start2=min(start), end2=max(end)) 
+chr2 = chr2 %>% subset(select=c("sff", "block", "start2", "end2")) 
+chr2 = chr2[!duplicated(chr2$block),]
+chr2 = chr2 %>% subset(select=c("sff", "start2", "end2")) 
+write.table(chr2, "data/region2.tsv", quote=FALSE, sep='\t', row.names = FALSE)
+
+#blocks = cbind(chr1, chr2)
+#blocks = blocks %>% subset(select=c("sff...1", "start1", "end1", "sff...5", "start2", "end2"))
+#colnames(blocks) = c("sff1", "start1", "end1", "sff2", "start2", "end2")
+```
 
 ```{bash script_bed_16sff, eval=FALSE, include=FALSE}
 # BUILD BED FILES OF THE ELEMENTS FROM THE 16TH LONGEST SCAFFOLDS
@@ -291,34 +335,41 @@ done}
 
 ```{bash}
 # WE GET THE SFF LENGHTS 
-head sca_lengths.tab -n 16 | sed 's/Sc00000/S/' > sixt.sca.tab
+head data/sca_lengths.tab -n 16 | sed 's/Sc00000/S/' > sixt.sca.tab
+cat data/region1.tsv | sed 's/Sc00000/S/' > data/link1.tsv
+cat data/region2.tsv | sed 's/Sc00000/S/' > data/link2.tsv
+rm data/region1.tsv data/region2.tsv 
 ```
 
 
 ```{r circos plot}
 # GET CHOORDINATES
-sff.l.bed = read.table("sixt.sca.tab")
-sff.l.bed = data.frame(sff.l.bed$V1, 1, sff.l.bed$V2)
-colnames(sff.l.bed) = c("Scaffold", "Start", "End")
-sff.l.bed
+sff.bed = read.table("sixt.sca.tab")
+sff.bed = data.frame(sff.bed$V1, 1, sff.bed$V2)
+colnames(sff.bed) = c("Scaffold", "Start", "End")
+sff.bed
 
-exome = read.table("../sff/exome.bed")
+exome = read.table("data/exome.bed")
 exome = exome[,-2]
 
-teRNAome = read.table("../sff/teRNAome.bed")
+teRNAome = read.table("data/teRNAome.bed")
 teRNAome = teRNAome[,-2]
 
-teDNAome = read.table("../sff/teDNAome.bed")
+teDNAome = read.table("data/teDNAome.bed")
 teDNAome = teDNAome[,-2]
+
+link1 = read.table("data/link1.tsv", header = TRUE)
+link2 = read.table("data/link2.tsv", header = TRUE)
 
 # PLOT THE CIRCOS
 
-{png(file="circular_genome.png", width=2000, height=2000)
-circos.genomicInitialize(sff.l.bed, plotType = "labels", labels.cex = 8)
+{png(file="figures/circular_genome.png", width=2000, height=2000)
+circos.genomicInitialize(sff.bed, plotType = "labels", labels.cex = 8)
 circos.track(ylim = c(0, 1), bg.border = NA, bg.col = rep(c("grey", "black"), 8) , track.height = 0.05)
 circos.genomicDensity(exome, col = c("#5EBF75"), track.height = 0.1, count_by = "number")
 circos.genomicDensity(teRNAome, col = c("#6276F6"), track.height = 0.1, count_by = "number")
 circos.genomicDensity(teDNAome, col = c("#F97C31"), track.height = 0.1, count_by = "number")
+circos.genomicLink(region1 = link1, region2 = link2, col = met.brewer("Cross", 54))
 circos.clear()
 dev.off()
 }
