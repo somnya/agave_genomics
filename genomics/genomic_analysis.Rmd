@@ -30,6 +30,7 @@ Advisor:
 ```{r setup, include=FALSE}
 # NEEDED PACKAGES
 library(ggtree)
+library(ggpubr)
 library(ggpointdensity)
 library(tidyverse)
 library(tximport)
@@ -153,55 +154,42 @@ sort -k 1 all.gff > annotation.gff
 # PHYLOGENETIC ANALYSIS OF TES
 
 ```{bash TEs_phylogeny, eval=FALSE, include=FALSE}
-TEsorter ../class_1_tes_consensus.fasta -db rexdb-plant #USING REPEAT EXPLORER DATABASE
-Summary of classifications:
+#Random sample of 30k TEs 
+
+shuf tes.gff | head -n30000 > domains/sample_tes.gff > bed > fasta
+TEsorter sample_tes.fasta -db rexdb-plant
+
 Order           Superfamily      # of Sequences# of Clade Sequences    # of Clades# of full Domains
-LTR             Copia                       118             88              8             19
-LTR             Gypsy                       103             90              7             22
-pararetrovirus  unknown                       1              0              0              0
-LINE            unknown                      11              0              0              0
+LTR             Copia                      6315           1735             11            281
+LTR             Gypsy                      7533           2369             10            299
+LTR             mixture                      91              0              0              0
+pararetrovirus  unknown                      10              0              0              0
+LINE            unknown                     253              0              0              0
+TIR             EnSpm_CACTA                  30              0              0              0
+TIR             MuDR_Mutator                208              0              0              0
+TIR             hAT                         107              0              0              0
+mixture         mixture                      23              0              0              0
 
-TEsorter ../class_1_tes_consensus.fasta -db gydb #Using GYPSY DATABASE
-Summary of classifications:
-Order           Superfamily      # of Sequences# of Clade Sequences    # of Clades# of full Domains
-LTR             Caulimoviridae                2              1              1              0
-LTR             Copia                       114             83              6             14
-LTR             Gypsy                        91             77              6             21
-LTR             unknown                       1              1              1              0
-Unknown         unknown                       1              1              1              0
+#RT and TPase DOMAINS
+cat sample_tes.fasta.rexdb-plant.dom.tsv | grep -P "\-RT\t" | get_record.py -i sample_tes.fasta.rexdb-plant.d
+om.faa -o RT_domains.fasta -t fasta
 
-# ALINGMENT OF RT DOMAINS OBTAINED IN THE FIRST RUN
-cat class_1_tes_consensus.fasta.rexdb-plant.dom.tsv | grep -P "\-RT\t" | get_record.py -i class_1_tes_consensus.fasta.rexdb-plant.dom.faa -o RT_domains.faa -t fasta
+cat sample_tes.fasta.rexdb-plant.dom.tsv | grep -P "\-TPase\t" | get_record.py -i sample_tes.fasta.rexdb-plan
+t.dom.faa -o TPase_domains.fasta -t fasta
 
-mafft --auto RT_domains.faa > RT_domains.aln
-Strategy: L-INS-i (Probably most accurate, very slow)
+# RT TREE
+mafft --auto RT_domains.fasta > RT_domains.aln
+FFT-NS-2 (Fast but rough)
 
 iqtree -s RT_domains.aln -bb 1000 -nt AUTO
-Best-fit model according to BIC: LG+G4
+Best-fit model: JTT+F+R5 chosen according to BIC
 
-# ALINGMENT OF WHOLE DNA TEs
-mafft --auto ../class_2_tes_consensus.fasta > class_2.aln
-Strategy: FFT-NS-2 (Fast but rough)
-
-../../tes/iq_tree/bin/iqtree -s class_2.aln -bb 1000 -nt AUTO
-Best-fit model: K3Pu+F+G4 chosen according to BIC
-
-# THE TREE WAS NOT ACCCURATE SO I RAN TESORTER USING DNATES ONLY
-TEsorter ../class_2_tes_consensus.fasta -db rexdb-plant
-Order           Superfamily      # of Sequences# of Clade Sequences    # of Clades# of full Domains
-LTR             Copia (?!)                    1              1              1              0
-TIR             EnSpm_CACTA                   2              0              0              0
-TIR             MuDR_Mutator                  5              0              0              0
-TIR             hAT                           5              0              0              0
-
-cat class_2_tes_consensus.fasta.rexdb-plant.dom.tsv | grep -P "\-TPase\t" | get_record.py -i class_2_tes_c
-onsensus.fasta.rexdb-plant.dom.faa -o TPase_domains.faa -t fasta
-
-mafft --auto TPase_domains.faa > TPase.aln
+#TPase TREE
+mafft --auto TPase_domains.fasta > TPase_domains.aln
 L-INS-i (Probably most accurate, very slow)
 
-iq_tree/bin/iqtree -s TPase.aln -bb 1000 -nt AUTO
-Best-fit model: Blosum62 chosen according to BIC
+iqtree -s TPase_domains.aln -bb 1000 -nt AUTO
+Best-fit model: VT+F+G4 chosen according to BIC
 ```
 
 
@@ -233,16 +221,19 @@ alpha_vals <- c(
 # OVERIDE ALPHA + FILL AESTHETICS
 color_overide=c(rep(2, 13), 3, rep(1,10))
 colors=  met.brewer("Stevens")
+c("#8AC998", "#00736D", "#F6B380")
 
 #P LOTING
 ggplot(first_scaffols_positions, aes(position, after_stat(count), fill = niche, alpha=element)) +
-  geom_density(position = "fill", adjust=1/5, color="white", size=0.2) + scale_fill_manual(values = met.brewer("Stevens")) + 
+  geom_density(position = "fill", adjust=1/5, color="white", size=0.2) + 
+  scale_fill_manual(values = met.brewer("Stevens")) + 
   scale_alpha_manual(values = alpha_vals) + 
   labs(x = "Scaffold position", y= "Proportion", alpha= "Genomic Element") +
   guides(
     fill = guide_none(),
     alpha = guide_legend(override.aes = list(fill = colors[color_overide]),
     nrow = 4, byrow = TRUE)) +
+  theme_few()+
   theme(legend.position = "bottom") 
 ggsave(file="figures/landscape.png", width=12, height=6, dpi=600)
 ```
@@ -250,15 +241,37 @@ ggsave(file="figures/landscape.png", width=12, height=6, dpi=600)
 ```{r stacked_bar}
 #BARPLOT OF TOTAL COUNTS
 
-families <- read_excel("C:/Users/52722/Desktop/Agave/genome/tes/families_count.xlsx")
+orders <- read.table("data/orders.tab")
+colnames(orders) = c("count", "order")
+orders$order
 
-ggplot(families) + geom_bar(aes(x= class, y= count, fill=family), position = "stack", stat = "identity") +
-  xlab("Transposable Element Class") + 
-  ylab("Count") +
-  labs(fill="Family") +
-  theme(text = element_text(size=30)) +
-  theme(legend.position = c(0.2, 0.6))
-ggsave(file="families.png", width=10, height=10, dpi=300)
+orders = orders %>% mutate(
+    class = case_when(
+      order %in% c("LINE/Jockey", "LINE/L1",           
+                   "LINE/L2",          
+                   "LINE/Penelope",     
+                   "LINE/R1",         
+                   "LINE/RTE-BovB",     
+                   "LTR/Unknown",     
+                   "LTR/Cassandra",    
+                   "LTR/Caulimovirus", 
+                   "LTR/Copia",   
+                   "LTR/ERV1",        
+                   "LTR/Gypsy",       
+                   "LTR/Ngaro",         
+                   "LTR/Pao",          
+                   "SINE/Unknown" ) ~ "Class_I",
+      T ~ "Class_II"
+    )
+  )
+
+ggplot(orders) + geom_bar(aes(x= "", y= count, fill=class, alpha= order), position = "stack", stat = "identity", color="white") +
+  scale_fill_manual(values = met.brewer("Stevens")) +
+  labs(x="Whole genome", y= "TE order count")+
+  guides(alpha="none", fill="none") +
+  theme_few()+
+  theme(text = element_text(size=30)) 
+ggsave(file="figures/ordercount.png", width=5, height=30, dpi=300)
 ```
 
 # CIRCOS PLOT
@@ -335,7 +348,7 @@ done}
 
 ```{bash}
 # WE GET THE SFF LENGHTS 
-head data/sca_lengths.tab -n 16 | sed 's/Sc00000/S/' > sixt.sca.tab
+head data/sca_lengths.tab -n 16 | sed 's/Sc00000/S/' > data/sixt.sca.tab
 cat data/region1.tsv | sed 's/Sc00000/S/' > data/link1.tsv
 cat data/region2.tsv | sed 's/Sc00000/S/' > data/link2.tsv
 rm data/region1.tsv data/region2.tsv 
@@ -344,10 +357,10 @@ rm data/region1.tsv data/region2.tsv
 
 ```{r circos plot}
 # GET CHOORDINATES
-sff.bed = read.table("sixt.sca.tab")
+sff.bed = read.table("data/sixt.sca.tab")
 sff.bed = data.frame(sff.bed$V1, 1, sff.bed$V2)
 colnames(sff.bed) = c("Scaffold", "Start", "End")
-sff.bed
+write.table(sff.bed, "data/sff.bed", quote=FALSE, sep='\t', row.names = FALSE, col.names = FALSE)
 
 exome = read.table("data/exome.bed")
 exome = exome[,-2]
@@ -364,8 +377,9 @@ link2 = read.table("data/link2.tsv", header = TRUE)
 # PLOT THE CIRCOS
 
 {png(file="figures/circular_genome.png", width=2000, height=2000)
-circos.genomicInitialize(sff.bed, plotType = "labels", labels.cex = 8)
-circos.track(ylim = c(0, 1), bg.border = NA, bg.col = met.brewer("Cross", 16) , track.height = 0.05)
+circos.par("clock.wise"=TRUE, start.degree=86, gap.degree=c(rep(3,15), 8))
+circos.genomicInitialize(sff.bed, plotType = c("axis","labels"), labels.cex = 4, axis.labels.cex=1)
+circos.track(ylim = c(0, 0.05), bg.border = NA, bg.col = met.brewer("Cross", 16) , track.height = 0.05)
 circos.genomicDensity(exome, col = c("#5EBF75"), track.height = 0.1, count_by = "number")
 circos.genomicDensity(teRNAome, col = c("#6276F6"), track.height = 0.1, count_by = "number")
 circos.genomicDensity(teDNAome, col = c("#F97C31"), track.height = 0.1, count_by = "number")
@@ -409,24 +423,48 @@ upstream <- upstream[upstream$tis >= 0, ]
 max(upstream$tis)
 # THERE ARE HIGH VALUES, I REMOVE THEM
 upstream=upstream[upstream$tis <= 10000, ]
-upstream$te[upstream$te = "DNA"]
+
+levels(factor(upstream$te))
 upstream = upstream %>% mutate(
     niche = case_when(
-      te %in% c("DNA", "DNA/CMC-EnSpm", "DNA/CMC-Transib", "DNA/hAT-Ac", "DNA/hAT-Tag1", "DNA/hAT-Tip100", "DNA/IS3EU", "DNA/Kolobok-Hydra", "DNA/Maverick", "DNA/Merlin", "DNA/MuLE-MuDR", "DNA/MULE-MuDR", "DNA/TcMar-Tc2") ~ "Class_II",
-      element == "exon" ~ "coding",
+      te %in% c("DNA", "DNA/CMC-EnSpm", "DNA/CMC-Transib", "DNA/hAT-Ac", "DNA/hAT-Tag1", "DNA/hAT-Tip100", "DNA/IS3EU", "DNA/Kolobok-Hydra", "DNA/Maverick", "DNA/Merlin", "DNA/MuLE-MuDR", "DNA/MULE-MuDR", "DNA/TcMar-Tc2", "Helitron", "DNA/PIF-Harbinger", "DNA/Novosib", "DNA/ot1", "DNA/Ginger") ~ "Class_II",
       T ~ "Class_I"
     )
   )
-ggplot(upstream) + geom_boxplot(aes(x=len, y=te)) + 
+
+rects <- data.frame(ystart = seq(0.5,32.5,1), 
+                    yend = seq(1.5,33.5,1), 
+                    te=levels(factor(upstream$te)), 
+                    niche=c(rep("Class_II",18), rep("Class_I", 15)))
+
+# STATISTICAL TESTS, ARE THERE SIGNIFICANT DIFFERENCES?
+tis.aov=aov(tis ~ te, data=upstream)
+summary(tis.aov) #YES ***
+len.aov=aov(len ~ te, data=upstream)
+summary(len.aov) #YES ***
+exp.aov=aov(mean_exp ~ te, data=upstream)
+summary(exp.aov) #YES *
+```
+
+```{r}
+#lenght
+ggplot(upstream) + geom_boxplot(aes(x=log2(len), y=te, fill=niche))+ 
+  geom_rect(data=rects, aes(xmin=0, xmax=16, ymin=ystart, ymax=yend, fill=niche), alpha=0.4)+
+  scale_fill_manual(values = met.brewer("Stevens")) +
+  guides(fill="none")+
   theme_hc()+
-  labs(x="Lenght")+
+  labs(x="log2Lenght")+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 ggsave(file="figures/lenght.png", width=4, height=8, dpi=600)
 ```
 
+
 ```{r}
-ggplot(upstream, aes(x=tis, y=te))+
-   geom_density_ridges_gradient(alpha=0.4, quantile_lines = TRUE, quantiles=2) + 
+ggplot(upstream)+
+  geom_density_ridges_gradient(aes(x=tis, y=te, fill=niche), color="white",alpha=0.2, quantile_lines = TRUE, quantiles=2) + 
+  geom_rect(data=rects, aes(xmin=-2500, xmax=12500, ymin=ystart, ymax=yend, fill=niche), alpha=0.4)+
+  scale_fill_manual(values = met.brewer("Stevens")) +
+  guides(fill="none")+
   theme_hc()+
   labs(x="Distance from gene", y=NULL)+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
@@ -434,17 +472,23 @@ ggsave(file="figures/tis.png", width=4, height=8, dpi=600)
 ```
 
 ```{r}
-ggplot(upstream) + geom_boxplot(aes(x=mean_exp, y=te))+
+ggplot(upstream) + geom_boxplot(aes(x=log2(mean_exp), y=te, fill=niche))+
+  geom_rect(data=rects, aes(xmin=-15, xmax=15, ymin=ystart, ymax=yend, fill=niche), alpha=0.4)+
+  scale_fill_manual(values = met.brewer("Stevens")) +
+  guides(fill="none")+
   theme_hc()+
-  labs(x="TPM")+
+  labs(x="log2TPM")+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 ggsave(file="figures/exp.png", width=4, height=8, dpi=600)
 ```
 
 ```{r}
-ggplot(upstream) + geom_bar(aes(x=after_stat(count), y=te), fill="black") + 
+ggplot(upstream) + geom_bar(aes(x=after_stat(log2(count)), y=te, fill=niche)) + 
+  geom_rect(data=rects, aes(xmin=0, xmax=15, ymin=ystart, ymax=yend, fill=niche), alpha=0.4)+
+  scale_fill_manual(values = met.brewer("Stevens")) +
+  guides(fill="none")+
   theme_hc()+
-  labs(x="Count")+
+  labs(x="log2Count")+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 ggsave(file="figures/count.png", width=4, height=8, dpi=600)
 ```
@@ -453,7 +497,6 @@ ggsave(file="figures/count.png", width=4, height=8, dpi=600)
 chars=upstream[,7:9]
 correlations_chars=cor(chars)
 chorddiag(correlations_chars)
-plotcorr
 ```
 
 
