@@ -1,0 +1,112 @@
+---
+title: "Evolutionary and population genomics of Agave angustifolia"
+author: "Eddy Jesús Mendoza Galindo"
+date: "02/10/2021"
+output:
+    prettydoc::html_pretty:
+    theme: cayman
+<style>
+body {
+text-align: justify}
+</style>
+---
+
+# PART 1: EVOLUTIONARY GENOMICS
+## Bachelor thesis. Agrigenomic Sciences. 
+### National Autonomous University of Mexico
+
+Advisor:
+- Dra. Tania Hernández-Hernández
+  - Desert Botanical Garden, USA.
+
+## Co-Advisors:
+- Dra.  L. Selene Fernández-Valverde
+- Dr. Sergio Nigenda-Morales 
+  - LANGEBIO CINVESTAV Irapuato.
+
+## Internal advisor:
+- Dr. Antonio Hernández-López
+
+```{r setup, include=FALSE}
+# NEEDED PACKAGES
+library(tidyverse)
+library(reshape2)
+library(ggplot2)
+library(ggrepel)
+library(MetBrewer)
+getwd()
+getRversion()
+```
+# Primero veamos qué tanto porcentaje de variación explican los componentes
+
+```{r}
+eigenval = scan("../../../popgen/plink/pca.eigenval")
+# Convertimos los valores a porcentaje
+eigenval = data.frame(PC = 1:20, PVE = eigenval/sum(eigenval)*100)
+#Graficamos
+ggplot(eigenval, aes(PC, PVE)) + 
+  geom_bar(stat = "identity") + 
+  labs(title="Componente principales", y="Porcentaje de varianza explicado") 
+```
+
+# Ahora resolveremos una pregunta importante: ¿el PCA revela agrupamiento de las poblaciones?
+
+```{r}
+pca = read_table("../../../popgen/plink/clusters.tsv", col_names = TRUE)
+# Graficamos, inlcuyendo el % de varianza
+ggplot(pca, aes(PC1, PC2, col=group, label=sp)) + 
+  geom_point(size=5) #+ 
+  geom_text_repel(color="black") +
+  labs(title="Análisis de componentes principales", x="PC1 (27.52%)", y="PC2 (11.19%)", col="Población") + 
+  theme_bw()
+```
+
+# Muy bien, ahora exploremos los resultados de ADMIXTURE
+
+# Primero, hay que escoger un valor de K que mejor explique la ancestría de las poblaciones.
+# Vamos a tomar el archivo de los valores de error por validación cruzada que extrajimos previamente.
+
+```{r}
+cvad = read.table("../../../popgen/admix/cver.txt")
+# Nombramos columnas
+colnames(cvad) = c("K", "CVEV")
+#Graficamos
+ggplot(cvad) + 
+  geom_line(aes(K, CVEV), size=2) + 
+  geom_point(aes(K, CVEV), size=4) +
+  labs(title="Validación cruzada de K", x="K", y="Valor de error")
+```
+
+# Como no podemos tomar 1, el K con menor error es 5, entonces utilizamos los procentajes de ancestría con ese K para graficarlo.
+
+```{r}
+twok = read.table("../../../popgen/admix/admix.2.Q")
+colnames(fivek) = c("K1", "K2")
+# Vamos a pegarle las etiquetas de población y nombre
+twok = data.frame(pca$name, pca$sp, pca$group, pca$state, twok)
+# La siguiente función convertirá los valores de K en una sola variable y los emparejará con su etiqueta.
+twok=melt(twok, value.name = "per")
+# Graficamos
+ggplot(group_by(twok, per)) + 
+  geom_bar(aes(pca.name, per, fill=variable), position = "stack", stat = "identity", width=1) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x=element_blank(), legend.position = "none") +
+  labs(title= "ADMIXTURE K=5", y= "Probabilidad de ancestría", x= NULL) +
+  scale_fill_manual(values=met.brewer("Pissaro")) +
+  facet_wrap(~pca.group, ncol = 1)
+```
+
+```{r}
+fivek = read.table("../../../popgen/admix/admix.5.Q")
+colnames(fivek) = c("K1", "K2", "K3", "K4", "K5")
+# Vamos a pegarle las etiquetas de población y nombre
+admix = data.frame(pca$name, pca$sp, pca$group, pca$state, fivek)
+# La siguiente función convertirá los valores de K en una sola variable y los emparejará con su etiqueta.
+admix=melt(admix, value.name = "per")
+# Graficamos
+ggplot(group_by(admix, per)) + 
+  geom_bar(aes(pca.name, per, fill=variable), position = "stack", stat = "identity", width=1) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x=element_blank(), legend.position = "none") +
+  labs(title= "ADMIXTURE K=5", y= "Probabilidad de ancestría", x= NULL) +
+  scale_fill_manual(values=met.brewer("Pissaro")) #+
+  facet_wrap(~pca.group, ncol = 1)
+```
