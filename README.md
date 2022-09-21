@@ -11,7 +11,6 @@
 
 ## Co-Advisors:
 - Dra.  L. Selene Fernández-Valverde
-- Dr. Sergio Nigenda-Morales 
   - LANGEBIO CINVESTAV Irapuato.
 
 ## Internal advisor:
